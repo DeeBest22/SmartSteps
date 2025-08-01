@@ -35,7 +35,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 setTimeout(() => {
                 window.location.href = '/host-login';
             }, 100);
-                }, 100);
                 return;
             }
             
@@ -46,6 +45,7 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error('Host authentication error:', error);
             setTimeout(() => {
             window.location.href = '/host-login';
+        }, 100);
         }
     }
 
