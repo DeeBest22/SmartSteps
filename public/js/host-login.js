@@ -31,10 +31,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
             if (response.ok) {
                 showAlert('Login successful! Redirecting to host dashboard...', 'success');
-                // Wait a bit longer to ensure cookie is set
+                // Wait longer to ensure cookie is properly set
                 setTimeout(() => {
                     window.location.href = '/host-dashboard';
-                }, 1500);
+                }, 2500);
             } else {
                 showAlert(result.error || 'Login failed', 'error');
             }

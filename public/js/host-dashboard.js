@@ -26,40 +26,61 @@ document.addEventListener('DOMContentLoaded', function() {
 
     async function checkAuthentication() {
         try {
+            console.log('Checking host authentication...');
             const response = await fetch('/api/host/verify');
             console.log('Host verification response:', response.status);
             
             if (!response.ok) {
                 console.log('Host verification failed, redirecting to login');
-                // Add a small delay to prevent immediate redirect loops
-                setTimeout(() => {
-                window.location.href = '/host-login';
-            }, 100);
-                return;
+                throw new Error('Authentication failed');
             }
             
             const data = await response.json();
             console.log('Host verification data:', data);
-            document.getElementById('hostName').textContent = `Welcome, ${data.host.name}`;
+            
+            if (data.authenticated && data.host) {
+                document.getElementById('hostName').textContent = `Welcome, ${data.host.name}`;
+                console.log('Host authentication successful');
+            } else {
+                throw new Error('Invalid authentication response');
+            }
         } catch (error) {
             console.error('Host authentication error:', error);
-            setTimeout(() => {
+            // Clear any existing tokens and redirect
+            document.cookie = 'hostToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
             window.location.href = '/host-login';
-        }, 100);
         }
     }
 
     async function loadDashboardData() {
         try {
+            console.log('Loading dashboard data...');
+            
             // Load events
             const eventsResponse = await fetch('/api/host/events');
+            console.log('Events response status:', eventsResponse.status);
+            
+            if (!eventsResponse.ok) {
+                throw new Error('Failed to load events');
+            }
+            
             const eventsData = await eventsResponse.json();
+            console.log('Events data received:', eventsData);
             const events = Array.isArray(eventsData) ? eventsData : [];
+            console.log('Processed events array:', events.length);
             
             // Load teachers
             const teachersResponse = await fetch('/api/host/teachers');
+            console.log('Teachers response status:', teachersResponse.status);
+            
+            if (!teachersResponse.ok) {
+                throw new Error('Failed to load teachers');
+            }
+            
             const teachersData = await teachersResponse.json();
+            console.log('Teachers data received:', teachersData);
             const teachers = Array.isArray(teachersData) ? teachersData : [];
+            console.log('Processed teachers array:', teachers.length);
 
             // Calculate statistics
             const activeEvents = events.filter(event => event.status === 'active').length;
@@ -82,6 +103,8 @@ document.addEventListener('DOMContentLoaded', function() {
     function displayEvents(events) {
         const container = document.getElementById('eventsContainer');
         
+        console.log('Displaying events:', events.length);
+        
         if (events.length === 0) {
             container.innerHTML = `
                 <div class="empty-state">
@@ -99,7 +122,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const eventsHTML = `
             <div class="events-grid">
-                ${events.map(event => {
+                ${events.map((event, index) => {
+                    console.log(`Processing event ${index}:`, event.title);
                     const progress = calculateEventProgress(event);
                     const statusClass = getEventStatusClass(event);
                     
@@ -238,7 +262,11 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function calculateEventProgress(event) {
+        console.log('Calculating progress for event:', event.title);
+        console.log('Event subjects:', event.subjects);
+        
         if (!event.subjects || !Array.isArray(event.subjects)) {
+            console.log('No subjects found, returning 0 progress');
             return { totalRequired: event.questionsPerSubject * 5, totalCompleted: 0, percentage: 0 };
         }
         
@@ -246,6 +274,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const totalCompleted = event.subjects.reduce((sum, subject) => sum + subject.questionCount, 0);
         const percentage = Math.round((totalCompleted / totalRequired) * 100);
         
+        console.log(`Progress: ${totalCompleted}/${totalRequired} = ${percentage}%`);
         return { totalRequired, totalCompleted, percentage };
     }
 
