@@ -115,6 +115,68 @@ const Teacher = mongoose.model('Teacher', teacherSchema);
 const Quiz = mongoose.model('Quiz', quizSchema);
 const Response = mongoose.model('Response', responseSchema);
 
+// Host Schema
+const hostSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  email: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
+  role: { type: String, default: 'host' },
+  createdAt: { type: Date, default: Date.now }
+});
+
+// JAMB Mock Event Schema
+const jambEventSchema = new mongoose.Schema({
+  title: { type: String, required: true },
+  description: { type: String },
+  hostId: { type: mongoose.Schema.Types.ObjectId, ref: 'Host', required: true },
+  timeLimit: { type: Number, required: true }, // in minutes
+  questionsPerSubject: { type: Number, required: true },
+  deadline: { type: Date, required: true },
+  status: { type: String, enum: ['active', 'completed', 'published'], default: 'active' },
+  shareId: { type: String, unique: true, default: uuidv4 },
+  subjects: [{
+    subject: { type: String, required: true, enum: ['Mathematics', 'English', 'Physics', 'Chemistry', 'Biology'] },
+    teacherId: { type: mongoose.Schema.Types.ObjectId, ref: 'Teacher' },
+    questions: [{
+      question: { type: String, required: true },
+      options: [{ type: String, required: true }],
+      correctAnswer: { type: Number, required: true },
+      imageUrls: [{ type: String }],
+      imagePublicIds: [{ type: String }],
+      createdAt: { type: Date, default: Date.now }
+    }],
+    questionCount: { type: Number, default: 0 },
+    isComplete: { type: Boolean, default: false }
+  }],
+  totalQuestions: { type: Number, default: 0 },
+  createdAt: { type: Date, default: Date.now }
+});
+
+// JAMB Mock Response Schema
+const jambResponseSchema = new mongoose.Schema({
+  studentName: { type: String, required: true },
+  eventId: { type: mongoose.Schema.Types.ObjectId, ref: 'JambEvent', required: true },
+  answers: [{
+    subject: { type: String, required: true },
+    questionIndex: { type: Number, required: true },
+    selectedAnswer: { type: Number, required: true } // -1 for unanswered
+  }],
+  scores: [{
+    subject: { type: String, required: true },
+    score: { type: Number, required: true },
+    totalQuestions: { type: Number, required: true }
+  }],
+  totalScore: { type: Number, required: true },
+  totalQuestions: { type: Number, required: true },
+  timeSpent: { type: Number, default: 0 },
+  correctionId: { type: String, unique: true, default: uuidv4 },
+  submittedAt: { type: Date, default: Date.now }
+});
+
+const Host = mongoose.model('Host', hostSchema);
+const JambEvent = mongoose.model('JambEvent', jambEventSchema);
+const JambResponse = mongoose.model('JambResponse', jambResponseSchema);
+
 // Authentication middleware
 const authenticateTeacher = (req, res, next) => {
   const token = req.cookies.token || req.headers.authorization?.split(' ')[1];
@@ -126,6 +188,26 @@ const authenticateTeacher = (req, res, next) => {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.teacher = decoded;
+    next();
+  } catch (error) {
+    res.status(400).json({ error: 'Invalid token.' });
+  }
+};
+
+// Host authentication middleware
+const authenticateHost = (req, res, next) => {
+  const token = req.cookies.hostToken || req.headers.authorization?.split(' ')[1];
+  
+  if (!token) {
+    return res.status(401).json({ error: 'Access denied. No token provided.' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (decoded.role !== 'host') {
+      return res.status(403).json({ error: 'Access denied. Host privileges required.' });
+    }
+    req.host = decoded;
     next();
   } catch (error) {
     res.status(400).json({ error: 'Invalid token.' });
@@ -209,6 +291,26 @@ app.get('/student-details/:responseId', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'student-details.html'));
 });
 
+app.get('/host-login', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'host-login.html'));
+});
+
+app.get('/host-dashboard', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'host-dashboard.html'));
+});
+
+app.get('/teacher-events', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'teacher-events.html'));
+});
+
+app.get('/teacher/event-contribute/:eventId', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'teacher-event-contribute.html'));
+});
+
+app.get('/jamb-mock/:shareId', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'jamb-mock-quiz.html'));
+});
+
 // Teacher registration
 app.post('/api/register', async (req, res) => {
   try {
@@ -276,6 +378,320 @@ app.post('/api/login', async (req, res) => {
 app.post('/api/logout', (req, res) => {
   res.clearCookie('token');
   res.json({ message: 'Logged out successfully' });
+});
+
+// Host login
+app.post('/api/host/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // For demo purposes, create a default host if none exists
+    let host = await Host.findOne({ email });
+    if (!host && email === 'host@smartsteps.com') {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      host = new Host({
+        name: 'Smart Steps Host',
+        email: 'host@smartsteps.com',
+        password: hashedPassword,
+        role: 'host'
+      });
+      await host.save();
+    }
+
+    if (!host) {
+      return res.status(400).json({ error: 'Invalid email or password' });
+    }
+
+    const isValidPassword = await bcrypt.compare(password, host.password);
+    if (!isValidPassword) {
+      return res.status(400).json({ error: 'Invalid email or password' });
+    }
+
+    const token = jwt.sign(
+      { id: host._id, email: host.email, name: host.name, role: 'host' },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    res.cookie('hostToken', token, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 });
+    res.json({ message: 'Login successful', host: { id: host._id, name: host.name, email: host.email } });
+  } catch (error) {
+    res.status(500).json({ error: 'Server error during login' });
+  }
+});
+
+// Host logout
+app.post('/api/host/logout', (req, res) => {
+  res.clearCookie('hostToken');
+  res.json({ message: 'Logged out successfully' });
+});
+
+// Verify host authentication
+app.get('/api/host/verify', authenticateHost, (req, res) => {
+  res.json({ authenticated: true, host: req.host });
+});
+
+// Create JAMB Mock Event
+app.post('/api/host/events', authenticateHost, async (req, res) => {
+  try {
+    const { title, description, timeLimit, questionsPerSubject, deadline } = req.body;
+    
+    // Initialize subjects with empty question arrays
+    const subjects = ['Mathematics', 'English', 'Physics', 'Chemistry', 'Biology'].map(subject => ({
+      subject,
+      questions: [],
+      questionCount: 0,
+      isComplete: false
+    }));
+    
+    const event = new JambEvent({
+      title,
+      description,
+      hostId: req.host.id,
+      timeLimit,
+      questionsPerSubject,
+      deadline: new Date(deadline),
+      subjects,
+      shareId: uuidv4()
+    });
+
+    await event.save();
+    res.status(201).json({ message: 'JAMB Mock event created successfully', event });
+  } catch (error) {
+    console.error('Error creating event:', error);
+    res.status(500).json({ error: 'Error creating event' });
+  }
+});
+
+// Get host events
+app.get('/api/host/events', authenticateHost, async (req, res) => {
+  try {
+    const events = await JambEvent.find({ hostId: req.host.id }).sort({ createdAt: -1 });
+    res.json(events);
+  } catch (error) {
+    res.status(500).json({ error: 'Error fetching events' });
+  }
+});
+
+// Get all teachers (for host)
+app.get('/api/host/teachers', authenticateHost, async (req, res) => {
+  try {
+    const teachers = await Teacher.find({}, { password: 0 }).sort({ createdAt: -1 });
+    
+    // Add statistics for each teacher
+    const teachersWithStats = await Promise.all(teachers.map(async (teacher) => {
+      const quizCount = await Quiz.countDocuments({ teacherId: teacher._id });
+      const eventParticipation = await JambEvent.countDocuments({
+        'subjects.teacherId': teacher._id
+      });
+      
+      return {
+        ...teacher.toObject(),
+        quizCount,
+        eventParticipation
+      };
+    }));
+    
+    res.json(teachersWithStats);
+  } catch (error) {
+    res.status(500).json({ error: 'Error fetching teachers' });
+  }
+});
+
+// Delete event (host only)
+app.delete('/api/host/events/:eventId', authenticateHost, async (req, res) => {
+  try {
+    const event = await JambEvent.findById(req.params.eventId);
+    
+    if (!event) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    if (event.hostId.toString() !== req.host.id) {
+      return res.status(403).json({ error: 'Access denied. You can only delete your own events.' });
+    }
+
+    // Delete associated images from Cloudinary
+    for (const subject of event.subjects) {
+      for (const question of subject.questions) {
+        if (question.imagePublicIds && question.imagePublicIds.length > 0) {
+          for (const publicId of question.imagePublicIds) {
+            try {
+              await cloudinary.uploader.destroy(publicId);
+            } catch (error) {
+              console.error('Error deleting image:', error);
+            }
+          }
+        }
+      }
+    }
+
+    await JambResponse.deleteMany({ eventId: req.params.eventId });
+    await JambEvent.findByIdAndDelete(req.params.eventId);
+
+    res.json({ message: 'Event and all associated data deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting event:', error);
+    res.status(500).json({ error: 'Error deleting event' });
+  }
+});
+
+// Publish event (host only)
+app.post('/api/host/events/:eventId/publish', authenticateHost, async (req, res) => {
+  try {
+    const event = await JambEvent.findById(req.params.eventId);
+    
+    if (!event) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    if (event.hostId.toString() !== req.host.id) {
+      return res.status(403).json({ error: 'Access denied.' });
+    }
+
+    // Check if all subjects have required questions
+    const incompleteSubjects = event.subjects.filter(subject => 
+      subject.questionCount < event.questionsPerSubject
+    );
+
+    if (incompleteSubjects.length > 0) {
+      return res.status(400).json({ 
+        error: `Cannot publish event. Missing questions in: ${incompleteSubjects.map(s => s.subject).join(', ')}` 
+      });
+    }
+
+    event.status = 'published';
+    await event.save();
+
+    res.json({ message: 'Event published successfully', shareId: event.shareId });
+  } catch (error) {
+    console.error('Error publishing event:', error);
+    res.status(500).json({ error: 'Error publishing event' });
+  }
+});
+
+// Get events for teachers
+app.get('/api/teacher/events', authenticateTeacher, async (req, res) => {
+  try {
+    const events = await JambEvent.find({ 
+      status: { $in: ['active', 'completed', 'published'] } 
+    }).sort({ createdAt: -1 });
+    
+    // Calculate teacher's contributions
+    let myContributions = 0;
+    let pendingEvents = 0;
+    
+    events.forEach(event => {
+      const mySubject = event.subjects.find(s => s.subject === req.teacher.subject);
+      if (mySubject && mySubject.questionCount > 0) {
+        myContributions++;
+      }
+      if (event.status === 'active' && (!mySubject || mySubject.questionCount < event.questionsPerSubject)) {
+        pendingEvents++;
+      }
+    });
+    
+    res.json({
+      events,
+      teacherSubject: req.teacher.subject,
+      myContributions,
+      pendingEvents
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Error fetching events' });
+  }
+});
+
+// Get specific event for teacher contribution
+app.get('/api/teacher/events/:eventId', authenticateTeacher, async (req, res) => {
+  try {
+    const event = await JambEvent.findById(req.params.eventId);
+    
+    if (!event) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    if (event.status !== 'active') {
+      return res.status(400).json({ error: 'Event is no longer accepting contributions' });
+    }
+
+    // Get existing questions for teacher's subject
+    const mySubject = event.subjects.find(s => s.subject === req.teacher.subject);
+    const existingQuestions = mySubject ? mySubject.questions : [];
+    
+    res.json({
+      event,
+      existingQuestions
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Error fetching event details' });
+  }
+});
+
+// Contribute questions to event
+app.post('/api/teacher/events/:eventId/contribute', authenticateTeacher, async (req, res) => {
+  try {
+    const { questions } = req.body;
+    const event = await JambEvent.findById(req.params.eventId);
+    
+    if (!event) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    if (event.status !== 'active') {
+      return res.status(400).json({ error: 'Event is no longer accepting contributions' });
+    }
+
+    if (new Date() > event.deadline) {
+      return res.status(400).json({ error: 'Event deadline has passed' });
+    }
+
+    if (questions.length > event.questionsPerSubject) {
+      return res.status(400).json({ 
+        error: `Maximum ${event.questionsPerSubject} questions allowed per subject` 
+      });
+    }
+
+    // Find or create subject entry
+    let subjectIndex = event.subjects.findIndex(s => s.subject === req.teacher.subject);
+    if (subjectIndex === -1) {
+      event.subjects.push({
+        subject: req.teacher.subject,
+        teacherId: req.teacher.id,
+        questions: [],
+        questionCount: 0,
+        isComplete: false
+      });
+      subjectIndex = event.subjects.length - 1;
+    }
+
+    // Update subject with new questions
+    event.subjects[subjectIndex].teacherId = req.teacher.id;
+    event.subjects[subjectIndex].questions = questions;
+    event.subjects[subjectIndex].questionCount = questions.length;
+    event.subjects[subjectIndex].isComplete = questions.length >= event.questionsPerSubject;
+
+    // Update total questions count
+    event.totalQuestions = event.subjects.reduce((sum, subject) => sum + subject.questionCount, 0);
+
+    // Check if event is complete
+    const allSubjectsComplete = event.subjects.every(subject => subject.isComplete);
+    if (allSubjectsComplete) {
+      event.status = 'completed';
+    }
+
+    await event.save();
+
+    res.json({ 
+      message: 'Questions saved successfully', 
+      questionCount: questions.length,
+      isComplete: event.subjects[subjectIndex].isComplete,
+      eventStatus: event.status
+    });
+  } catch (error) {
+    console.error('Error saving questions:', error);
+    res.status(500).json({ error: 'Error saving questions' });
+  }
 });
 
 // Create quiz
