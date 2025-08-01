@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JAMB Mock Events - Smart Steps Tutorial</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/css/teacher-events.css">
+    <link rel="stylesheet" href="/css/logo.css">
+</head>
+<body>
+    <header class="header">
+        <nav class="navbar">
+            <div class="nav-brand">
+                <div class="logo"><img class="" src="img/steps_smart.png" alt=""></div>
+                <span>Smart Steps Tutorial</span>
+            </div>
+            <div class="nav-links">
+                <a href="/teacher-dashboard" class="btn btn-outline">
+                    <i class="fas fa-tachometer-alt"></i>
+                    Dashboard
+                </a>
+                <span id="teacherName" class="text-primary"></span>
+                <button id="logoutBtn" class="btn btn-outline">
+                    <i class="fas fa-sign-out-alt"></i>
+                    Logout
+                </button>
+            </div>
+        </nav>
+    </header>
+
+    <main class="main">
+        <div class="dashboard-header">
+            <h1 class="dashboard-title">
+                <i class="fas fa-calendar-alt"></i>
+                JAMB Mock Events
+            </h1>
+            <p class="dashboard-subtitle">Contribute questions to collaborative JAMB Mock examinations in your subject area.</p>
+            
+            <div class="dashboard-stats">
+                <div class="stat-card">
+                    <div class="stat-number" id="totalEvents">0</div>
+                    <div class="stat-label">Available Events</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="myContributions">0</div>
+                    <div class="stat-label">My Contributions</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="pendingEvents">0</div>
+                    <div class="stat-label">Pending Events</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="quiz-container">
+            <h2 class="section-title">
+                <i class="fas fa-tasks"></i>
+                Available Events for <span id="teacherSubject"></span>
+            </h2>
+            
+            <div id="eventsContainer">
+                <div class="text-center">
+                    <i class="fas fa-spinner fa-spin fa-2x text-primary"></i>
+                    <p class="mt-2">Loading events...</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="js/teacher-events.js"></script>
+</body>
+</html>
