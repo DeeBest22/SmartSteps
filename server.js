@@ -198,18 +198,25 @@ const authenticateTeacher = (req, res, next) => {
 const authenticateHost = (req, res, next) => {
   const token = req.cookies.hostToken || req.headers.authorization?.split(' ')[1];
   
+  console.log('Host token check:', !!token);
+  
   if (!token) {
+    console.log('No host token found');
     return res.status(401).json({ error: 'Access denied. No token provided.' });
   }
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
+    console.log('Host token decoded:', decoded);
+    
     if (decoded.role !== 'host') {
+      console.log('Invalid role for host:', decoded.role);
       return res.status(403).json({ error: 'Access denied. Host privileges required.' });
     }
     req.host = decoded;
     next();
   } catch (error) {
+    console.error('Host token verification error:', error);
     res.status(400).json({ error: 'Invalid token.' });
   }
 };
@@ -384,10 +391,13 @@ app.post('/api/logout', (req, res) => {
 app.post('/api/host/login', async (req, res) => {
   try {
     const { email, password } = req.body;
+    
+    console.log('Host login attempt for:', email);
 
     // For demo purposes, create a default host if none exists
     let host = await Host.findOne({ email });
     if (!host && email === 'host@smartsteps.com') {
+      console.log('Creating default host account');
       const hashedPassword = await bcrypt.hash(password, 10);
       host = new Host({
         name: 'Smart Steps Host',
@@ -396,14 +406,17 @@ app.post('/api/host/login', async (req, res) => {
         role: 'host'
       });
       await host.save();
+      console.log('Default host created');
     }
 
     if (!host) {
+      console.log('Host not found for email:', email);
       return res.status(400).json({ error: 'Invalid email or password' });
     }
 
     const isValidPassword = await bcrypt.compare(password, host.password);
     if (!isValidPassword) {
+      console.log('Invalid password for host:', email);
       return res.status(400).json({ error: 'Invalid email or password' });
     }
 
@@ -413,9 +426,11 @@ app.post('/api/host/login', async (req, res) => {
       { expiresIn: '24h' }
     );
 
+    console.log('Host login successful, setting cookie');
     res.cookie('hostToken', token, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 });
     res.json({ message: 'Login successful', host: { id: host._id, name: host.name, email: host.email } });
   } catch (error) {
+    console.error('Host login error:', error);
     res.status(500).json({ error: 'Server error during login' });
   }
 });
@@ -428,13 +443,22 @@ app.post('/api/host/logout', (req, res) => {
 
 // Verify host authentication
 app.get('/api/host/verify', authenticateHost, (req, res) => {
-  res.json({ authenticated: true, host: req.host });
+  res.json({ 
+    authenticated: true, 
+    host: { 
+      id: req.host.id, 
+      name: req.host.name, 
+      email: req.host.email 
+    } 
+  });
 });
 
 // Create JAMB Mock Event
 app.post('/api/host/events', authenticateHost, async (req, res) => {
   try {
     const { title, description, timeLimit, questionsPerSubject, deadline } = req.body;
+    
+    console.log('Creating JAMB event for host:', req.host.id);
     
     // Initialize subjects with empty question arrays
     const subjects = ['Mathematics', 'English', 'Physics', 'Chemistry', 'Biology'].map(subject => ({
@@ -452,10 +476,12 @@ app.post('/api/host/events', authenticateHost, async (req, res) => {
       questionsPerSubject,
       deadline: new Date(deadline),
       subjects,
+      totalQuestions: 0,
       shareId: uuidv4()
     });
 
     await event.save();
+    console.log('JAMB event created successfully:', event._id);
     res.status(201).json({ message: 'JAMB Mock event created successfully', event });
   } catch (error) {
     console.error('Error creating event:', error);
@@ -467,8 +493,10 @@ app.post('/api/host/events', authenticateHost, async (req, res) => {
 app.get('/api/host/events', authenticateHost, async (req, res) => {
   try {
     const events = await JambEvent.find({ hostId: req.host.id }).sort({ createdAt: -1 });
-    res.json(events);
+    console.log('Host events found:', events.length);
+    res.json(events || []);
   } catch (error) {
+    console.error('Error fetching host events:', error);
     res.status(500).json({ error: 'Error fetching events' });
   }
 });
@@ -492,8 +520,10 @@ app.get('/api/host/teachers', authenticateHost, async (req, res) => {
       };
     }));
     
-    res.json(teachersWithStats);
+    console.log('Teachers found:', teachersWithStats.length);
+    res.json(teachersWithStats || []);
   } catch (error) {
+    console.error('Error fetching teachers:', error);
     res.status(500).json({ error: 'Error fetching teachers' });
   }
 });
@@ -582,7 +612,7 @@ app.get('/api/teacher/events', authenticateTeacher, async (req, res) => {
     let pendingEvents = 0;
     
     events.forEach(event => {
-      const mySubject = event.subjects.find(s => s.subject === req.teacher.subject);
+      const mySubject = (event.subjects || []).find(s => s.subject === req.teacher.subject);
       if (mySubject && mySubject.questionCount > 0) {
         myContributions++;
       }
@@ -591,13 +621,15 @@ app.get('/api/teacher/events', authenticateTeacher, async (req, res) => {
       }
     });
     
+    console.log('Teacher events found:', events.length);
     res.json({
-      events,
+      events: events || [],
       teacherSubject: req.teacher.subject,
       myContributions,
       pendingEvents
     });
   } catch (error) {
+    console.error('Error fetching teacher events:', error);
     res.status(500).json({ error: 'Error fetching events' });
   }
 });

@@ -27,12 +27,14 @@ document.addEventListener('DOMContentLoaded', function() {
             });
 
             const result = await response.json();
+            console.log('Host login response:', result);
 
             if (response.ok) {
                 showAlert('Login successful! Redirecting to host dashboard...', 'success');
+                // Wait a bit longer to ensure cookie is set
                 setTimeout(() => {
                     window.location.href = '/host-dashboard';
-                }, 2000);
+                }, 1500);
             } else {
                 showAlert(result.error || 'Login failed', 'error');
             }

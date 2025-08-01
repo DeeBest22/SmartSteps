@@ -27,14 +27,24 @@ document.addEventListener('DOMContentLoaded', function() {
     async function checkAuthentication() {
         try {
             const response = await fetch('/api/host/verify');
+            console.log('Host verification response:', response.status);
+            
             if (!response.ok) {
+                console.log('Host verification failed, redirecting to login');
+                // Add a small delay to prevent immediate redirect loops
+                setTimeout(() => {
                 window.location.href = '/host-login';
+            }, 100);
+                }, 100);
                 return;
             }
             
             const data = await response.json();
+            console.log('Host verification data:', data);
             document.getElementById('hostName').textContent = `Welcome, ${data.host.name}`;
         } catch (error) {
+            console.error('Host authentication error:', error);
+            setTimeout(() => {
             window.location.href = '/host-login';
         }
     }
@@ -43,11 +53,13 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             // Load events
             const eventsResponse = await fetch('/api/host/events');
-            const events = await eventsResponse.json();
+            const eventsData = await eventsResponse.json();
+            const events = Array.isArray(eventsData) ? eventsData : [];
             
             // Load teachers
             const teachersResponse = await fetch('/api/host/teachers');
-            const teachers = await teachersResponse.json();
+            const teachersData = await teachersResponse.json();
+            const teachers = Array.isArray(teachersData) ? teachersData : [];
 
             // Calculate statistics
             const activeEvents = events.filter(event => event.status === 'active').length;
@@ -117,7 +129,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 </div>
                                 <div class="meta-item">
                                     <i class="fas fa-users"></i>
-                                    <span>${event.totalQuestions} total questions</span>
+                                    <span>${event.totalQuestions || 0} total questions</span>
                                 </div>
                             </div>
                             
@@ -133,7 +145,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             
                             <div class="event-subjects">
                                 ${['Mathematics', 'English', 'Physics', 'Chemistry', 'Biology'].map(subject => {
-                                    const subjectData = event.subjects.find(s => s.subject === subject);
+                                    const subjectData = (event.subjects || []).find(s => s.subject === subject);
                                     const isCompleted = subjectData && subjectData.questionCount >= event.questionsPerSubject;
                                     
                                     return `
@@ -226,6 +238,10 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function calculateEventProgress(event) {
+        if (!event.subjects || !Array.isArray(event.subjects)) {
+            return { totalRequired: event.questionsPerSubject * 5, totalCompleted: 0, percentage: 0 };
+        }
+        
         const totalRequired = event.questionsPerSubject * 5; // 5 subjects
         const totalCompleted = event.subjects.reduce((sum, subject) => sum + subject.questionCount, 0);
         const percentage = Math.round((totalCompleted / totalRequired) * 100);

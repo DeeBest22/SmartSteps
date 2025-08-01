@@ -25,12 +25,15 @@ document.addEventListener('DOMContentLoaded', function() {
             const response = await fetch('/api/teacher/events');
             const data = await response.json();
             
+            // Ensure events is an array
+            const events = Array.isArray(data.events) ? data.events : [];
+            
             // Update statistics
-            document.getElementById('totalEvents').textContent = data.events.length;
+            document.getElementById('totalEvents').textContent = events.length;
             document.getElementById('myContributions').textContent = data.myContributions;
             document.getElementById('pendingEvents').textContent = data.pendingEvents;
 
-            displayEvents(data.events, data.teacherSubject);
+            displayEvents(events, data.teacherSubject);
         } catch (error) {
             console.error('Error loading events data:', error);
             showAlert('Error loading events data', 'error');
