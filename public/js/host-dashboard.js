@@ -350,6 +350,23 @@ document.addEventListener('DOMContentLoaded', function() {
         window.location.href = `/host/event-responses/${eventId}`;
     };
 
+    window.copyEventLink = function(shareId) {
+        const link = `${window.location.origin}/jamb-mock/${shareId}`;
+        navigator.clipboard.writeText(link).then(() => {
+            showAlert('JAMB Mock link copied to clipboard!', 'success');
+        }).catch(() => {
+            prompt('Copy this JAMB Mock link:', link);
+        });
+    };
+
+    window.copyQuizLink = function(shareId) {
+        const link = `${window.location.origin}/quiz/${shareId}`;
+        navigator.clipboard.writeText(link).then(() => {
+            showAlert('Quiz link copied to clipboard!', 'success');
+        }).catch(() => {
+            prompt('Copy this quiz link:', link);
+        });
+    };
     window.publishEvent = async function(eventId) {
         const confirmed = confirm('Are you sure you want to publish this JAMB Mock event? Once published, students can take the exam.');
         

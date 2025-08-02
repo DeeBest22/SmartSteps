@@ -111,15 +111,15 @@ document.addEventListener('DOMContentLoaded', function() {
                                         </div>
                                         ${teacherSubject}
                                     </div>
-                                    <div class="subject-progress ${isMySubjectComplete ? 'completed' : 'pending'}">
-                                        <i class="fas fa-${isMySubjectComplete ? 'check-circle' : 'clock'}"></i>
-                                        ${myProgress}/${event.questionsPerSubject}
+                                    <div class="subject-progress ${myProgress > 0 ? 'completed' : 'pending'}">
+                                        <i class="fas fa-${myProgress > 0 ? 'check-circle' : 'clock'}"></i>
+                                        ${myProgress} questions
                                     </div>
                                 </div>
                                 
                                 <div class="progress-bar">
-                                    <div class="progress-fill ${isMySubjectComplete ? 'completed' : 'pending'}" 
-                                         style="width: ${(myProgress / event.questionsPerSubject) * 100}%"></div>
+                                    <div class="progress-fill ${myProgress > 0 ? 'completed' : 'pending'}" 
+                                         style="width: ${Math.min((myProgress / 50) * 100, 100)}%"></div>
                                 </div>
                                 
                                 <div class="subject-actions">

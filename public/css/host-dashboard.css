@@ -517,3 +517,223 @@
 .empty-state p {
     margin-bottom: 1.5rem;
 }
+
+/* Enhanced Footer */
+        .footer {
+            background: linear-gradient(135deg, #2c3e50, #34495e);
+            color: white;
+            padding: 4rem 0 2rem;
+            position: relative;
+        }
+
+        .footer::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M20 20c0-16.569 13.431-30 30-30s30 13.431 30 30-13.431 30-30 30-30-13.431-30-30z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E") repeat;
+        }
+
+/* Question Distribution Styles */
+.question-distribution {
+    background: var(--color-bg-secondary);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-lg);
+    border: 1px solid var(--color-border-light);
+}
+
+.distribution-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-sm) 0;
+    border-bottom: 1px solid var(--color-border-light);
+}
+
+.distribution-item:last-child {
+    border-bottom: none;
+}
+
+.distribution-item span {
+    color: var(--color-text-secondary);
+}
+
+.distribution-item strong {
+    color: var(--host-primary);
+    font-weight: 600;
+}
+
+/* Subject Badge Styles */
+.subject-badge {
+    padding: 0.25rem 0.75rem;
+    border-radius: 1rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.subject-badge.mathematics { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+.subject-badge.english { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; }
+.subject-badge.physics { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+.subject-badge.chemistry { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+.subject-badge.biology { background: rgba(16, 185, 129, 0.1); color: #10b981; }
+
+/* Subject Detail Cards */
+.subject-detail-card {
+    background: var(--color-bg-primary);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+    box-shadow: var(--shadow-md);
+    border: 1px solid var(--color-border-light);
+}
+
+.subject-detail-card .subject-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--color-border-light);
+}
+
+.subject-detail-card .subject-name {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.subject-detail-card .question-count {
+    background: var(--host-primary);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 1rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.questions-list {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.question-preview {
+    background: var(--color-bg-secondary);
+    border-radius: var(--radius-md);
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border: 1px solid var(--color-border-light);
+}
+
+.question-preview .question-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.question-num {
+    background: var(--host-primary);
+    color: white;
+    padding: 0.25rem 0.75rem;
+    border-radius: 1rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.teacher-name {
+    color: var(--color-text-secondary);
+    font-size: 0.875rem;
+    font-style: italic;
+}
+
+.question-preview .question-text {
+    font-weight: 500;
+    margin-bottom: 1rem;
+    line-height: 1.5;
+}
+
+.question-images {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.question-image-thumb {
+    width: 60px;
+    height: 60px;
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-border-light);
+    cursor: pointer;
+    transition: transform 0.2s ease;
+}
+
+.question-image-thumb:hover {
+    transform: scale(1.1);
+}
+
+.question-options {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.option-preview {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    background: var(--color-bg-primary);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-border-light);
+    font-size: 0.875rem;
+}
+
+.option-preview.correct {
+    background: rgba(16, 185, 129, 0.1);
+    border-color: var(--event-success);
+    color: var(--event-success);
+    font-weight: 600;
+}
+
+.option-preview .option-letter {
+    font-weight: 600;
+    min-width: 20px;
+}
+
+.option-preview .option-text {
+    flex: 1;
+}
+
+.option-preview i {
+    color: var(--event-success);
+}
+
+.no-questions {
+    text-align: center;
+    color: var(--color-text-secondary);
+    font-style: italic;
+    padding: 2rem;
+}
+
+/* Button Small */
+.btn-small {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+}
+
+        .footer-content {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2.5rem;
+            margin-bottom: 2rem;
+            position: relative;
+            z-index: 2;
+        }

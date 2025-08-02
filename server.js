@@ -130,7 +130,6 @@ const jambEventSchema = new mongoose.Schema({
   description: { type: String },
   hostId: { type: mongoose.Schema.Types.ObjectId, ref: 'Host', required: true },
   timeLimit: { type: Number, required: true }, // in minutes
-  questionsPerSubject: { type: Number, required: true },
   deadline: { type: Date, required: true },
   status: { type: String, enum: ['active', 'completed', 'published'], default: 'active' },
   shareId: { type: String, unique: true, default: uuidv4 },
@@ -143,10 +142,16 @@ const jambEventSchema = new mongoose.Schema({
       correctAnswer: { type: Number, required: true },
       imageUrls: [{ type: String }],
       imagePublicIds: [{ type: String }],
+      teacherId: { type: mongoose.Schema.Types.ObjectId, ref: 'Teacher', required: true },
+      teacherName: { type: String, required: true },
       createdAt: { type: Date, default: Date.now }
     }],
     questionCount: { type: Number, default: 0 },
-    isComplete: { type: Boolean, default: false }
+    teacherContributions: [{
+      teacherId: { type: mongoose.Schema.Types.ObjectId, ref: 'Teacher' },
+      teacherName: { type: String },
+      questionCount: { type: Number, default: 0 }
+    }]
   }],
   totalQuestions: { type: Number, default: 0 },
   createdAt: { type: Date, default: Date.now }
@@ -155,6 +160,7 @@ const jambEventSchema = new mongoose.Schema({
 // JAMB Mock Response Schema
 const jambResponseSchema = new mongoose.Schema({
   studentName: { type: String, required: true },
+  studentEmail: { type: String, required: true },
   eventId: { type: mongoose.Schema.Types.ObjectId, ref: 'JambEvent', required: true },
   answers: [{
     subject: { type: String, required: true },
@@ -286,6 +292,10 @@ app.get('/quiz/:shareId', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'student-quiz.html'));
 });
 
+app.get('/jamb-mock/:shareId', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'jamb-mock-quiz.html'));
+});
+
 app.get('/correction/:correctionId', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'quiz-correction.html'));
 });
@@ -304,6 +314,14 @@ app.get('/host-login', (req, res) => {
 
 app.get('/host-dashboard', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'host-dashboard.html'));
+});
+
+app.get('/host/event-details/:eventId', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'host-event-details.html'));
+});
+
+app.get('/host/event-responses/:eventId', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'host-event-responses.html'));
 });
 
 app.get('/teacher-events', (req, res) => {
@@ -462,7 +480,7 @@ app.get('/api/host/verify', authenticateHost, (req, res) => {
 // Create JAMB Mock Event
 app.post('/api/host/events', authenticateHost, async (req, res) => {
   try {
-    const { title, description, timeLimit, questionsPerSubject, deadline } = req.body;
+    const { title, description, timeLimit, deadline } = req.body;
     
     console.log('Creating JAMB event for host:', req.hostData.id);
     
@@ -471,7 +489,7 @@ app.post('/api/host/events', authenticateHost, async (req, res) => {
       subject,
       questions: [],
       questionCount: 0,
-      isComplete: false
+      teacherContributions: []
     }));
     
     const event = new JambEvent({
@@ -479,7 +497,6 @@ app.post('/api/host/events', authenticateHost, async (req, res) => {
       description,
       hostId: req.hostData.id,
       timeLimit,
-      questionsPerSubject,
       deadline: new Date(deadline),
       subjects,
       totalQuestions: 0,
@@ -585,14 +602,12 @@ app.post('/api/host/events/:eventId/publish', authenticateHost, async (req, res)
       return res.status(403).json({ error: 'Access denied.' });
     }
 
-    // Check if all subjects have required questions
-    const incompleteSubjects = event.subjects.filter(subject => 
-      subject.questionCount < event.questionsPerSubject
-    );
+    // Check if all subjects have at least 10 questions
+    const incompleteSubjects = event.subjects.filter(subject => subject.questionCount < 10);
 
     if (incompleteSubjects.length > 0) {
       return res.status(400).json({ 
-        error: `Cannot publish event. Missing questions in: ${incompleteSubjects.map(s => s.subject).join(', ')}` 
+        error: `Cannot publish event. Need at least 10 questions in: ${incompleteSubjects.map(s => s.subject).join(', ')}` 
       });
     }
 
@@ -619,10 +634,11 @@ app.get('/api/teacher/events', authenticateTeacher, async (req, res) => {
     
     events.forEach(event => {
       const mySubject = (event.subjects || []).find(s => s.subject === req.teacher.subject);
-      if (mySubject && mySubject.questionCount > 0) {
+      const myContribution = mySubject ? mySubject.teacherContributions.find(c => c.teacherId.toString() === req.teacher.id) : null;
+      if (myContribution && myContribution.questionCount > 0) {
         myContributions++;
       }
-      if (event.status === 'active' && (!mySubject || mySubject.questionCount < event.questionsPerSubject)) {
+      if (event.status === 'active' && (!myContribution || myContribution.questionCount === 0)) {
         pendingEvents++;
       }
     });
@@ -653,9 +669,10 @@ app.get('/api/teacher/events/:eventId', authenticateTeacher, async (req, res) =>
       return res.status(400).json({ error: 'Event is no longer accepting contributions' });
     }
 
-    // Get existing questions for teacher's subject
+    // Get existing questions from this teacher for their subject
     const mySubject = event.subjects.find(s => s.subject === req.teacher.subject);
-    const existingQuestions = mySubject ? mySubject.questions : [];
+    const existingQuestions = mySubject ? 
+      mySubject.questions.filter(q => q.teacherId.toString() === req.teacher.id) : [];
     
     res.json({
       event,
@@ -685,11 +702,6 @@ app.post('/api/teacher/events/:eventId/contribute', authenticateTeacher, async (
     }
 
     if (questions.length > event.questionsPerSubject) {
-      return res.status(400).json({ 
-        error: `Maximum ${event.questionsPerSubject} questions allowed per subject` 
-      });
-    }
-
     // Find or create subject entry
     let subjectIndex = event.subjects.findIndex(s => s.subject === req.teacher.subject);
     if (subjectIndex === -1) {
@@ -698,22 +710,48 @@ app.post('/api/teacher/events/:eventId/contribute', authenticateTeacher, async (
         teacherId: req.teacher.id,
         questions: [],
         questionCount: 0,
-        isComplete: false
+        teacherContributions: []
       });
       subjectIndex = event.subjects.length - 1;
     }
 
-    // Update subject with new questions
-    event.subjects[subjectIndex].teacherId = req.teacher.id;
-    event.subjects[subjectIndex].questions = questions;
-    event.subjects[subjectIndex].questionCount = questions.length;
-    event.subjects[subjectIndex].isComplete = questions.length >= event.questionsPerSubject;
+    // Add teacher info to each question
+    const questionsWithTeacher = questions.map(q => ({
+      ...q,
+      teacherId: req.teacher.id,
+      teacherName: req.teacher.name
+    }));
+
+    // Remove existing questions from this teacher
+    event.subjects[subjectIndex].questions = event.subjects[subjectIndex].questions.filter(
+      q => q.teacherId.toString() !== req.teacher.id
+    );
+
+    // Add new questions from this teacher
+    event.subjects[subjectIndex].questions.push(...questionsWithTeacher);
+
+    // Update teacher contributions
+    const contributionIndex = event.subjects[subjectIndex].teacherContributions.findIndex(
+      c => c.teacherId.toString() === req.teacher.id
+    );
+    
+    if (contributionIndex === -1) {
+      event.subjects[subjectIndex].teacherContributions.push({
+        teacherId: req.teacher.id,
+        teacherName: req.teacher.name,
+        questionCount: questions.length
+      });
+    } else {
+      event.subjects[subjectIndex].teacherContributions[contributionIndex].questionCount = questions.length;
+    }
+    // Update total question count for this subject
+    event.subjects[subjectIndex].questionCount = event.subjects[subjectIndex].questions.length;
 
     // Update total questions count
     event.totalQuestions = event.subjects.reduce((sum, subject) => sum + subject.questionCount, 0);
 
-    // Check if event is complete
-    const allSubjectsComplete = event.subjects.every(subject => subject.isComplete);
+    // Check if event is complete (all subjects have at least 10 questions)
+    const allSubjectsComplete = event.subjects.every(subject => subject.questionCount >= 10);
     if (allSubjectsComplete) {
       event.status = 'completed';
     }
@@ -723,7 +761,7 @@ app.post('/api/teacher/events/:eventId/contribute', authenticateTeacher, async (
     res.json({ 
       message: 'Questions saved successfully', 
       questionCount: questions.length,
-      isComplete: event.subjects[subjectIndex].isComplete,
+      totalSubjectQuestions: event.subjects[subjectIndex].questionCount,
       eventStatus: event.status
     });
   } catch (error) {
@@ -982,6 +1020,223 @@ app.get('/api/all-responses', authenticateTeacher, async (req, res) => {
     res.json(groupedResponses);
   } catch (error) {
     res.status(500).json({ error: 'Error fetching all responses' });
+  }
+});
+
+// Get JAMB Mock event by share ID (for students)
+app.get('/api/jamb-mock/:shareId', async (req, res) => {
+  try {
+    const event = await JambEvent.findOne({ shareId: req.params.shareId });
+    if (!event) {
+      return res.status(404).json({ error: 'JAMB Mock not found' });
+    }
+    
+    if (event.status !== 'published') {
+      return res.status(400).json({ error: 'JAMB Mock is not yet available' });
+    }
+    
+    // Randomly select questions for each subject
+    const selectedQuestions = {};
+    const questionLimits = {
+      'English': 60,
+      'Mathematics': 40,
+      'Physics': 40,
+      'Chemistry': 40,
+      'Biology': 40
+    };
+    
+    event.subjects.forEach(subject => {
+      const limit = questionLimits[subject.subject];
+      const availableQuestions = subject.questions || [];
+      
+      if (availableQuestions.length > 0) {
+        // Shuffle and select questions
+        const shuffled = [...availableQuestions].sort(() => 0.5 - Math.random());
+        selectedQuestions[subject.subject] = shuffled.slice(0, Math.min(limit, shuffled.length));
+      } else {
+        selectedQuestions[subject.subject] = [];
+      }
+    });
+    
+    // Format for student quiz (hide correct answers)
+    const studentEvent = {
+      _id: event._id,
+      title: event.title,
+      description: event.description,
+      timeLimit: event.timeLimit,
+      shareId: event.shareId,
+      subjects: Object.keys(selectedQuestions).map(subject => ({
+        subject,
+        questions: selectedQuestions[subject].map(q => ({
+          question: q.question,
+          options: q.options,
+          imageUrls: q.imageUrls
+        }))
+      }))
+    };
+    
+    res.json(studentEvent);
+  } catch (error) {
+    console.error('Error fetching JAMB Mock:', error);
+    res.status(500).json({ error: 'Error fetching JAMB Mock' });
+  }
+});
+
+// Submit JAMB Mock response
+app.post('/api/jamb-mock/submit/:shareId', async (req, res) => {
+  try {
+    const { studentName, studentEmail, answers, timeSpent } = req.body;
+    
+    const event = await JambEvent.findOne({ shareId: req.params.shareId });
+    if (!event) {
+      return res.status(404).json({ error: 'JAMB Mock not found' });
+    }
+
+    // Calculate scores per subject
+    const scores = [];
+    let totalScore = 0;
+    let totalQuestions = 0;
+    
+    const questionLimits = {
+      'English': 60,
+      'Mathematics': 40,
+      'Physics': 40,
+      'Chemistry': 40,
+      'Biology': 40
+    };
+    
+    // Group answers by subject
+    const answersBySubject = {};
+    answers.forEach(answer => {
+      if (!answersBySubject[answer.subject]) {
+        answersBySubject[answer.subject] = [];
+      }
+      answersBySubject[answer.subject].push(answer);
+    });
+    
+    // Calculate score for each subject
+    event.subjects.forEach(subject => {
+      const subjectAnswers = answersBySubject[subject.subject] || [];
+      const limit = questionLimits[subject.subject];
+      const availableQuestions = subject.questions || [];
+      
+      if (availableQuestions.length > 0) {
+        // Get the same random selection used for the quiz
+        const shuffled = [...availableQuestions].sort(() => 0.5 - Math.random());
+        const selectedQuestions = shuffled.slice(0, Math.min(limit, shuffled.length));
+        
+        let subjectScore = 0;
+        subjectAnswers.forEach(answer => {
+          if (answer.questionIndex < selectedQuestions.length) {
+            const question = selectedQuestions[answer.questionIndex];
+            if (answer.selectedAnswer === question.correctAnswer) {
+              subjectScore++;
+            }
+          }
+        });
+        
+        scores.push({
+          subject: subject.subject,
+          score: subjectScore,
+          totalQuestions: selectedQuestions.length
+        });
+        
+        totalScore += subjectScore;
+        totalQuestions += selectedQuestions.length;
+      }
+    });
+
+    const response = new JambResponse({
+      studentName,
+      studentEmail,
+      eventId: event._id,
+      answers,
+      scores,
+      totalScore,
+      totalQuestions,
+      timeSpent: timeSpent || 0,
+      correctionId: uuidv4()
+    });
+
+    await response.save();
+
+    res.json({ 
+      message: 'JAMB Mock submitted successfully', 
+      totalScore, 
+      totalQuestions,
+      percentage: Math.round((totalScore / totalQuestions) * 100),
+      scores,
+      correctionId: response.correctionId
+    });
+  } catch (error) {
+    console.error('Error submitting JAMB Mock:', error);
+    res.status(500).json({ error: 'Error submitting JAMB Mock' });
+  }
+});
+
+// Get event details for host
+app.get('/api/host/events/:eventId/details', authenticateHost, async (req, res) => {
+  try {
+    const event = await JambEvent.findById(req.params.eventId)
+      .populate('subjects.questions.teacherId', 'name email');
+    
+    if (!event) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    if (event.hostId.toString() !== req.hostData.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    res.json(event);
+  } catch (error) {
+    console.error('Error fetching event details:', error);
+    res.status(500).json({ error: 'Error fetching event details' });
+  }
+});
+
+// Get event responses for host
+app.get('/api/host/events/:eventId/responses', authenticateHost, async (req, res) => {
+  try {
+    const event = await JambEvent.findById(req.params.eventId);
+    
+    if (!event) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    if (event.hostId.toString() !== req.hostData.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const responses = await JambResponse.find({ eventId: req.params.eventId })
+      .sort({ submittedAt: -1 });
+    
+    res.json({
+      event: {
+        title: event.title,
+        description: event.description,
+        timeLimit: event.timeLimit,
+        totalQuestions: event.totalQuestions
+      },
+      responses
+    });
+  } catch (error) {
+    console.error('Error fetching event responses:', error);
+    res.status(500).json({ error: 'Error fetching event responses' });
+  }
+});
+
+// Get all teacher quizzes for host
+app.get('/api/host/teacher-quizzes', authenticateHost, async (req, res) => {
+  try {
+    const quizzes = await Quiz.find({})
+      .populate('teacherId', 'name email subject')
+      .sort({ createdAt: -1 });
+    
+    res.json(quizzes);
+  } catch (error) {
+    console.error('Error fetching teacher quizzes:', error);
+    res.status(500).json({ error: 'Error fetching teacher quizzes' });
   }
 });
 
