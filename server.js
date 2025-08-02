@@ -603,11 +603,15 @@ app.post('/api/host/events/:eventId/publish', authenticateHost, async (req, res)
     }
 
     // Check if all subjects have at least 10 questions
-    const incompleteSubjects = event.subjects.filter(subject => subject.questionCount < 10);
+    const incompleteSubjects = event.subjects.filter(subject => {
+      const minQuestions = subject.subject === 'English' ? 60 : 40;
+      return subject.questionCount < minQuestions;
+    });
 
     if (incompleteSubjects.length > 0) {
+      const requirements = incompleteSubjects.map(s => `${s.subject} (need ${s.subject === 'English' ? 60 : 40}, have ${s.questionCount})`);
       return res.status(400).json({ 
-        error: `Cannot publish event. Need at least 10 questions in: ${incompleteSubjects.map(s => s.subject).join(', ')}` 
+        error: `Cannot publish event. Insufficient questions in: ${requirements.join(', ')}` 
       });
     }
 
