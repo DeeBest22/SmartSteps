@@ -532,7 +532,7 @@ app.get('/api/host/teachers', authenticateHost, async (req, res) => {
     // Add statistics for each teacher
     const teachersWithStats = await Promise.all(teachers.map(async (teacher) => {
       const quizCount = await Quiz.countDocuments({ teacherId: teacher._id });
-      const questionLimit = subject.subject === 'English' ? 60 : 40; // 60 for English, 40 for others
+      const eventParticipation = await JambEvent.countDocuments({
         'subjects.teacherId': teacher._id
       });
       
@@ -603,15 +603,11 @@ app.post('/api/host/events/:eventId/publish', authenticateHost, async (req, res)
     }
 
     // Check if all subjects have at least 10 questions
-    const incompleteSubjects = event.subjects.filter(subject => {
-      const minQuestions = subject.subject === 'English' ? 60 : 40;
-      return subject.questionCount < minQuestions;
-    });
+    const incompleteSubjects = event.subjects.filter(subject => subject.questionCount < 10);
 
     if (incompleteSubjects.length > 0) {
-      const requirements = incompleteSubjects.map(s => `${s.subject} (need ${s.subject === 'English' ? 60 : 40}, have ${s.questionCount})`);
       return res.status(400).json({ 
-        error: `Cannot publish event. Insufficient questions in: ${requirements.join(', ')}` 
+        error: `Cannot publish event. Need at least 10 questions in: ${incompleteSubjects.map(s => s.subject).join(', ')}` 
       });
     }
 
