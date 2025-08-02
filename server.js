@@ -130,6 +130,7 @@ const jambEventSchema = new mongoose.Schema({
   description: { type: String },
   hostId: { type: mongoose.Schema.Types.ObjectId, ref: 'Host', required: true },
   timeLimit: { type: Number, required: true }, // in minutes
+  questionsPerSubject: { type: Number, required: true },
   deadline: { type: Date, required: true },
   status: { type: String, enum: ['active', 'completed', 'published'], default: 'active' },
   shareId: { type: String, unique: true, default: uuidv4 },
@@ -142,16 +143,10 @@ const jambEventSchema = new mongoose.Schema({
       correctAnswer: { type: Number, required: true },
       imageUrls: [{ type: String }],
       imagePublicIds: [{ type: String }],
-      teacherId: { type: mongoose.Schema.Types.ObjectId, ref: 'Teacher', required: true },
-      teacherName: { type: String, required: true },
       createdAt: { type: Date, default: Date.now }
     }],
     questionCount: { type: Number, default: 0 },
-    teacherContributions: [{
-      teacherId: { type: mongoose.Schema.Types.ObjectId, ref: 'Teacher' },
-      teacherName: { type: String },
-      questionCount: { type: Number, default: 0 }
-    }]
+    isComplete: { type: Boolean, default: false }
   }],
   totalQuestions: { type: Number, default: 0 },
   createdAt: { type: Date, default: Date.now }
@@ -160,7 +155,6 @@ const jambEventSchema = new mongoose.Schema({
 // JAMB Mock Response Schema
 const jambResponseSchema = new mongoose.Schema({
   studentName: { type: String, required: true },
-  studentEmail: { type: String, required: true },
   eventId: { type: mongoose.Schema.Types.ObjectId, ref: 'JambEvent', required: true },
   answers: [{
     subject: { type: String, required: true },
@@ -204,25 +198,18 @@ const authenticateTeacher = (req, res, next) => {
 const authenticateHost = (req, res, next) => {
   const token = req.cookies.hostToken || req.headers.authorization?.split(' ')[1];
   
-  console.log('Host token check:', !!token);
-  
   if (!token) {
-    console.log('No host token found');
     return res.status(401).json({ error: 'Access denied. No token provided.' });
   }
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    console.log('Host token decoded:', decoded);
-    
     if (decoded.role !== 'host') {
-      console.log('Invalid role for host:', decoded.role);
       return res.status(403).json({ error: 'Access denied. Host privileges required.' });
     }
-    req.hostData = decoded;
+    req.host = decoded;
     next();
   } catch (error) {
-    console.error('Host token verification error:', error);
     res.status(400).json({ error: 'Invalid token.' });
   }
 };
@@ -292,10 +279,6 @@ app.get('/quiz/:shareId', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'student-quiz.html'));
 });
 
-app.get('/jamb-mock/:shareId', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'jamb-mock-quiz.html'));
-});
-
 app.get('/correction/:correctionId', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'quiz-correction.html'));
 });
@@ -314,14 +297,6 @@ app.get('/host-login', (req, res) => {
 
 app.get('/host-dashboard', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'host-dashboard.html'));
-});
-
-app.get('/host/event-details/:eventId', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'host-event-details.html'));
-});
-
-app.get('/host/event-responses/:eventId', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'host-event-responses.html'));
 });
 
 app.get('/teacher-events', (req, res) => {
@@ -409,14 +384,11 @@ app.post('/api/logout', (req, res) => {
 app.post('/api/host/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    
-    console.log('Host login attempt for:', email);
 
     // For demo purposes, create a default host if none exists
     let host = await Host.findOne({ email });
     if (!host && email === 'host@smartsteps.com') {
-      console.log('Creating default host account');
-      const hashedPassword = await bcrypt.hash('admin123', 10); // Fixed password for demo
+      const hashedPassword = await bcrypt.hash(password, 10);
       host = new Host({
         name: 'Smart Steps Host',
         email: 'host@smartsteps.com',
@@ -424,18 +396,14 @@ app.post('/api/host/login', async (req, res) => {
         role: 'host'
       });
       await host.save();
-      console.log('Default host created');
     }
 
     if (!host) {
-      console.log('Host not found for email:', email);
       return res.status(400).json({ error: 'Invalid email or password' });
     }
 
-    // For demo, accept any password for the default host
-    const isValidPassword = email === 'host@smartsteps.com' ? true : await bcrypt.compare(password, host.password);
+    const isValidPassword = await bcrypt.compare(password, host.password);
     if (!isValidPassword) {
-      console.log('Invalid password for host:', email);
       return res.status(400).json({ error: 'Invalid email or password' });
     }
 
@@ -445,16 +413,9 @@ app.post('/api/host/login', async (req, res) => {
       { expiresIn: '24h' }
     );
 
-    console.log('Host login successful, setting cookie');
-    res.cookie('hostToken', token, { 
-      httpOnly: true, 
-      maxAge: 24 * 60 * 60 * 1000,
-      sameSite: 'lax',
-      secure: false
-    });
+    res.cookie('hostToken', token, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 });
     res.json({ message: 'Login successful', host: { id: host._id, name: host.name, email: host.email } });
   } catch (error) {
-    console.error('Host login error:', error);
     res.status(500).json({ error: 'Server error during login' });
   }
 });
@@ -467,44 +428,34 @@ app.post('/api/host/logout', (req, res) => {
 
 // Verify host authentication
 app.get('/api/host/verify', authenticateHost, (req, res) => {
-  res.json({ 
-    authenticated: true, 
-    host: { 
-      id: req.hostData.id, 
-      name: req.hostData.name, 
-      email: req.hostData.email 
-    } 
-  });
+  res.json({ authenticated: true, host: req.host });
 });
 
 // Create JAMB Mock Event
 app.post('/api/host/events', authenticateHost, async (req, res) => {
   try {
-    const { title, description, timeLimit, deadline } = req.body;
-    
-    console.log('Creating JAMB event for host:', req.hostData.id);
+    const { title, description, timeLimit, questionsPerSubject, deadline } = req.body;
     
     // Initialize subjects with empty question arrays
     const subjects = ['Mathematics', 'English', 'Physics', 'Chemistry', 'Biology'].map(subject => ({
       subject,
       questions: [],
       questionCount: 0,
-      teacherContributions: []
+      isComplete: false
     }));
     
     const event = new JambEvent({
       title,
       description,
-      hostId: req.hostData.id,
+      hostId: req.host.id,
       timeLimit,
+      questionsPerSubject,
       deadline: new Date(deadline),
       subjects,
-      totalQuestions: 0,
       shareId: uuidv4()
     });
 
     await event.save();
-    console.log('JAMB event created successfully:', event._id);
     res.status(201).json({ message: 'JAMB Mock event created successfully', event });
   } catch (error) {
     console.error('Error creating event:', error);
@@ -515,11 +466,9 @@ app.post('/api/host/events', authenticateHost, async (req, res) => {
 // Get host events
 app.get('/api/host/events', authenticateHost, async (req, res) => {
   try {
-    const events = await JambEvent.find({ hostId: req.hostData.id }).sort({ createdAt: -1 });
-    console.log('Host events found:', events.length);
-    res.json(events || []);
+    const events = await JambEvent.find({ hostId: req.host.id }).sort({ createdAt: -1 });
+    res.json(events);
   } catch (error) {
-    console.error('Error fetching host events:', error);
     res.status(500).json({ error: 'Error fetching events' });
   }
 });
@@ -543,10 +492,8 @@ app.get('/api/host/teachers', authenticateHost, async (req, res) => {
       };
     }));
     
-    console.log('Teachers found:', teachersWithStats.length);
-    res.json(teachersWithStats || []);
+    res.json(teachersWithStats);
   } catch (error) {
-    console.error('Error fetching teachers:', error);
     res.status(500).json({ error: 'Error fetching teachers' });
   }
 });
@@ -560,7 +507,7 @@ app.delete('/api/host/events/:eventId', authenticateHost, async (req, res) => {
       return res.status(404).json({ error: 'Event not found' });
     }
 
-    if (event.hostId.toString() !== req.hostData.id) {
+    if (event.hostId.toString() !== req.host.id) {
       return res.status(403).json({ error: 'Access denied. You can only delete your own events.' });
     }
 
@@ -598,16 +545,18 @@ app.post('/api/host/events/:eventId/publish', authenticateHost, async (req, res)
       return res.status(404).json({ error: 'Event not found' });
     }
 
-    if (event.hostId.toString() !== req.hostData.id) {
+    if (event.hostId.toString() !== req.host.id) {
       return res.status(403).json({ error: 'Access denied.' });
     }
 
-    // Check if all subjects have at least 10 questions
-    const incompleteSubjects = event.subjects.filter(subject => subject.questionCount < 10);
+    // Check if all subjects have required questions
+    const incompleteSubjects = event.subjects.filter(subject => 
+      subject.questionCount < event.questionsPerSubject
+    );
 
     if (incompleteSubjects.length > 0) {
       return res.status(400).json({ 
-        error: `Cannot publish event. Need at least 10 questions in: ${incompleteSubjects.map(s => s.subject).join(', ')}` 
+        error: `Cannot publish event. Missing questions in: ${incompleteSubjects.map(s => s.subject).join(', ')}` 
       });
     }
 
@@ -633,25 +582,22 @@ app.get('/api/teacher/events', authenticateTeacher, async (req, res) => {
     let pendingEvents = 0;
     
     events.forEach(event => {
-      const mySubject = (event.subjects || []).find(s => s.subject === req.teacher.subject);
-      const myContribution = mySubject ? mySubject.teacherContributions.find(c => c.teacherId.toString() === req.teacher.id) : null;
-      if (myContribution && myContribution.questionCount > 0) {
+      const mySubject = event.subjects.find(s => s.subject === req.teacher.subject);
+      if (mySubject && mySubject.questionCount > 0) {
         myContributions++;
       }
-      if (event.status === 'active' && (!myContribution || myContribution.questionCount === 0)) {
+      if (event.status === 'active' && (!mySubject || mySubject.questionCount < event.questionsPerSubject)) {
         pendingEvents++;
       }
     });
     
-    console.log('Teacher events found:', events.length);
     res.json({
-      events: events || [],
+      events,
       teacherSubject: req.teacher.subject,
       myContributions,
       pendingEvents
     });
   } catch (error) {
-    console.error('Error fetching teacher events:', error);
     res.status(500).json({ error: 'Error fetching events' });
   }
 });
@@ -669,10 +615,9 @@ app.get('/api/teacher/events/:eventId', authenticateTeacher, async (req, res) =>
       return res.status(400).json({ error: 'Event is no longer accepting contributions' });
     }
 
-    // Get existing questions from this teacher for their subject
+    // Get existing questions for teacher's subject
     const mySubject = event.subjects.find(s => s.subject === req.teacher.subject);
-    const existingQuestions = mySubject ? 
-      mySubject.questions.filter(q => q.teacherId.toString() === req.teacher.id) : [];
+    const existingQuestions = mySubject ? mySubject.questions : [];
     
     res.json({
       event,
@@ -702,7 +647,11 @@ app.post('/api/teacher/events/:eventId/contribute', authenticateTeacher, async (
     }
 
     if (questions.length > event.questionsPerSubject) {
+      return res.status(400).json({ 
+        error: `Maximum ${event.questionsPerSubject} questions allowed per subject` 
+      });
     }
+
     // Find or create subject entry
     let subjectIndex = event.subjects.findIndex(s => s.subject === req.teacher.subject);
     if (subjectIndex === -1) {
@@ -711,48 +660,22 @@ app.post('/api/teacher/events/:eventId/contribute', authenticateTeacher, async (
         teacherId: req.teacher.id,
         questions: [],
         questionCount: 0,
-        teacherContributions: []
+        isComplete: false
       });
       subjectIndex = event.subjects.length - 1;
     }
 
-    // Add teacher info to each question
-    const questionsWithTeacher = questions.map(q => ({
-      ...q,
-      teacherId: req.teacher.id,
-      teacherName: req.teacher.name
-    }));
-
-    // Remove existing questions from this teacher
-    event.subjects[subjectIndex].questions = event.subjects[subjectIndex].questions.filter(
-      q => q.teacherId.toString() !== req.teacher.id
-    );
-
-    // Add new questions from this teacher
-    event.subjects[subjectIndex].questions.push(...questionsWithTeacher);
-
-    // Update teacher contributions
-    const contributionIndex = event.subjects[subjectIndex].teacherContributions.findIndex(
-      c => c.teacherId.toString() === req.teacher.id
-    );
-    
-    if (contributionIndex === -1) {
-      event.subjects[subjectIndex].teacherContributions.push({
-        teacherId: req.teacher.id,
-        teacherName: req.teacher.name,
-        questionCount: questions.length
-      });
-    } else {
-      event.subjects[subjectIndex].teacherContributions[contributionIndex].questionCount = questions.length;
-    }
-    // Update total question count for this subject
-    event.subjects[subjectIndex].questionCount = event.subjects[subjectIndex].questions.length;
+    // Update subject with new questions
+    event.subjects[subjectIndex].teacherId = req.teacher.id;
+    event.subjects[subjectIndex].questions = questions;
+    event.subjects[subjectIndex].questionCount = questions.length;
+    event.subjects[subjectIndex].isComplete = questions.length >= event.questionsPerSubject;
 
     // Update total questions count
     event.totalQuestions = event.subjects.reduce((sum, subject) => sum + subject.questionCount, 0);
 
-    // Check if event is complete (all subjects have at least 10 questions)
-    const allSubjectsComplete = event.subjects.every(subject => subject.questionCount >= 10);
+    // Check if event is complete
+    const allSubjectsComplete = event.subjects.every(subject => subject.isComplete);
     if (allSubjectsComplete) {
       event.status = 'completed';
     }
@@ -762,7 +685,7 @@ app.post('/api/teacher/events/:eventId/contribute', authenticateTeacher, async (
     res.json({ 
       message: 'Questions saved successfully', 
       questionCount: questions.length,
-      totalSubjectQuestions: event.subjects[subjectIndex].questionCount,
+      isComplete: event.subjects[subjectIndex].isComplete,
       eventStatus: event.status
     });
   } catch (error) {
