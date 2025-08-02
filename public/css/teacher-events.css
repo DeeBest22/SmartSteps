@@ -11,27 +11,6 @@
     --event-warning: #f59e0b;
     --event-danger: #ef4444;
     --event-gradient: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
-    
-    /* Spacing */
-    --spacing-xs: 0.5rem;
-    --spacing-sm: 1rem;
-    --spacing-md: 1.5rem;
-    --spacing-lg: 2rem;
-    --spacing-xl: 3rem;
-    --spacing-xxl: 4rem;
-    
-    /* Border Radius */
-    --radius-sm: 8px;
-    --radius-md: 12px;
-    --radius-lg: 16px;
-    --radius-xl: 24px;
-    
-    /* Transitions */
-    --transition-fast: 0.2s ease-out;
-    --transition-medium: 0.3s ease-out;
-    --transition-slow: 0.5s ease-out;
-    
-    --text-accent: #667eea;
 }
 
 /* Event Cards */

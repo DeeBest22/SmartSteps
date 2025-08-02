@@ -701,11 +701,14 @@ app.post('/api/teacher/events/:eventId/contribute', authenticateTeacher, async (
       return res.status(400).json({ error: 'Event deadline has passed' });
     }
 
+    if (questions.length > event.questionsPerSubject) {
+    }
     // Find or create subject entry
     let subjectIndex = event.subjects.findIndex(s => s.subject === req.teacher.subject);
     if (subjectIndex === -1) {
       event.subjects.push({
         subject: req.teacher.subject,
+        teacherId: req.teacher.id,
         questions: [],
         questionCount: 0,
         teacherContributions: []
@@ -749,10 +752,7 @@ app.post('/api/teacher/events/:eventId/contribute', authenticateTeacher, async (
     event.totalQuestions = event.subjects.reduce((sum, subject) => sum + subject.questionCount, 0);
 
     // Check if event is complete (all subjects have at least 10 questions)
-    const allSubjectsComplete = event.subjects.every(subject => {
-      const minQuestions = subject.subject === 'English' ? 60 : 40;
-      return subject.questionCount >= minQuestions;
-    });
+    const allSubjectsComplete = event.subjects.every(subject => subject.questionCount >= 10);
     if (allSubjectsComplete) {
       event.status = 'completed';
     }
