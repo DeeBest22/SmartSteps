@@ -119,7 +119,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 
                                 <div class="progress-bar">
                                     <div class="progress-fill ${myProgress > 0 ? 'completed' : 'pending'}" 
-                                         style="width: ${Math.min((myProgress / 50) * 100, 100)}%"></div>
+                                         style="width: ${Math.min((myProgress / (teacherSubject === 'English' ? 60 : 40)) * 100, 100)}%"></div>
                                 </div>
                                 
                                 <div class="subject-actions">

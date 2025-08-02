@@ -532,7 +532,7 @@ app.get('/api/host/teachers', authenticateHost, async (req, res) => {
     // Add statistics for each teacher
     const teachersWithStats = await Promise.all(teachers.map(async (teacher) => {
       const quizCount = await Quiz.countDocuments({ teacherId: teacher._id });
-      const eventParticipation = await JambEvent.countDocuments({
+      const questionLimit = subject.subject === 'English' ? 60 : 40; // 60 for English, 40 for others
         'subjects.teacherId': teacher._id
       });
       
@@ -603,11 +603,15 @@ app.post('/api/host/events/:eventId/publish', authenticateHost, async (req, res)
     }
 
     // Check if all subjects have at least 10 questions
-    const incompleteSubjects = event.subjects.filter(subject => subject.questionCount < 10);
+    const incompleteSubjects = event.subjects.filter(subject => {
+      const minQuestions = subject.subject === 'English' ? 60 : 40;
+      return subject.questionCount < minQuestions;
+    });
 
     if (incompleteSubjects.length > 0) {
+      const requirements = incompleteSubjects.map(s => `${s.subject} (need ${s.subject === 'English' ? 60 : 40}, have ${s.questionCount})`);
       return res.status(400).json({ 
-        error: `Cannot publish event. Need at least 10 questions in: ${incompleteSubjects.map(s => s.subject).join(', ')}` 
+        error: `Cannot publish event. Insufficient questions in: ${requirements.join(', ')}` 
       });
     }
 
@@ -701,14 +705,11 @@ app.post('/api/teacher/events/:eventId/contribute', authenticateTeacher, async (
       return res.status(400).json({ error: 'Event deadline has passed' });
     }
 
-    if (questions.length > event.questionsPerSubject) {
-    }
     // Find or create subject entry
     let subjectIndex = event.subjects.findIndex(s => s.subject === req.teacher.subject);
     if (subjectIndex === -1) {
       event.subjects.push({
         subject: req.teacher.subject,
-        teacherId: req.teacher.id,
         questions: [],
         questionCount: 0,
         teacherContributions: []
@@ -752,7 +753,10 @@ app.post('/api/teacher/events/:eventId/contribute', authenticateTeacher, async (
     event.totalQuestions = event.subjects.reduce((sum, subject) => sum + subject.questionCount, 0);
 
     // Check if event is complete (all subjects have at least 10 questions)
-    const allSubjectsComplete = event.subjects.every(subject => subject.questionCount >= 10);
+    const allSubjectsComplete = event.subjects.every(subject => {
+      const minQuestions = subject.subject === 'English' ? 60 : 40;
+      return subject.questionCount >= minQuestions;
+    });
     if (allSubjectsComplete) {
       event.status = 'completed';
     }
